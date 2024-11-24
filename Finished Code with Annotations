@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Nov 22 21:29:36 2024
+
+@author: gracewu
+"""
+
+import random
+import math
+from matplotlib import pyplot as plt
+import numpy as np
+
+#The following is in the skeleton code as an example: 
+    #def image_example():
+    #red, green, blue = range(3)
+    #img = np.zeros((150, 150, 3)) #height = 150 pixels, width = 150 pixels, 3 color channels (RGB)
+    #for x in range(50): #
+        #for y in range(50):
+           #img[x, y, red] = 1.0 
+           #img[x + 50, y + 50, :] = (.5, .0, .5)
+           #img[x + 100, y + 100, green] = 1.0
+    #plt.imshow(img) # shows the image data
+
+def normpdf(x, mean, sd): #given this function in the skeleton.py
+    var = float(sd)**2 
+    denom = (2 * math.pi * var)**.5
+    num = math.exp(-(float(x) - float(mean))**2 / (2 * var))
+    return num / denom
+
+def pdeath(x, mean, sd): # given this function in the skeleton.py; probability of death
+    start = x - 0.5 
+    end = x + 0.5 
+    step = 0.01  
+    integral = 0.0 
+    while start <= end:
+        integral += step * (normpdf(start, mean, sd) + normpdf(start + step, mean, sd)) / 2
+        start += step
+    return integral
+
+recovery_time = 5 # can adjust the number of time steps it takes for a 'cell' to recover
+virality = 0.5  # can adjust the virality rate
+mean_death = 3 # setting the mean death rate to 3, as recommended
+stdev_death = 1 # setting the standard deviation of death rate to 3, as recommended
+
+class Cell:
+    def __init__(self, x, y):
+        self.x = x # the x-coordinate of the cell on the grid
+        self.y = y # the y-coordinate of the cell on the grid
+        self.state = "S" # the initial state of the cell is susceptible, but not infected
+        self.time = 0  # infection timer set to zero
+
+    def infect(self):
+        self.state = "I" # the cell is infected
+        self.time = 0 # infection timer set to zero
+
+    def process(self, adjacent_cells): # function to determine if an infected cell is infected, recovered and now susceptible, dead, or infecting its neighboring cells
+        if self.state == "I": # if a cell is infected
+            self.time += 1 # add one to its infection timer for each time step
+            if self.time >= recovery_time: # if the cell's infection timer exceeds the recovery time and the cell is not dead, then it has recovered
+                self.state = "S" # set the cell's state back to susceptible because it is alive and able to be infected again
+                return # exit method/function because cell has recovered
+            if random.random() <= pdeath(self.time, mean_death, stdev_death): # if randomly generated value from 0.0 - 1.0 is less than or equal to the probability of death
+                self.state = "R" # the cell is marked as resilient/dead
+                return # exit method/function because cell has died
+            for neighbor in adjacent_cells: # for each neighboring cell
+                if neighbor.state == "S" and random.random() <= virality: # if the neighboring cell is susceptible (not already infected/dead) 
+                # and randomly generated value from 0.0 - 1.0 is less than or equal to the rate of virality
+                    neighbor.infect() # call the infect method on the given neighboring cell (that cell is marked for infection)
+
+class Map:
+    def __init__(self):
+        self.height = 150 # set height to 150 pixels
+        self.width = 150 # set width to 150 pixels
+        self.cells = {} # initializes empty dictionary to store all the cell objects within the map
+
+    def add_cell(self, cell): # adding cell to the empty dictionary
+        self.cells[(cell.x, cell.y)] = cell # add the cell to the dictionary with its coordinates (x,y) as its key
+
+    def display(self):
+        image = np.zeros((150, 150, 3), dtype='float64') # create an 150x150 pixel array that assigns RGB value to each coordinate
+        for (x, y), cell in self.cells.items(): # for every cell in the array
+            if cell.state == "S": # if the state of the cell is Susceptible
+                image[x, y] = [0, 1, 0] # assign green color 
+            elif cell.state == "I": # if the state of the cell is Infected
+                image[x, y] = [1, 0, 0] # assign red color
+            elif cell.state == "R": # if the state of the cell is Resistant aka Dead
+                image[x, y] = [0.5, 0.5, 0.5] # assign grey color
+        plt.imshow(image) # creates the image
+        plt.show() # displays/shows the image to the user
+
+    def adjacent_cells(self, x, y): # (x,y) is the current cell
+        directions = [(0, 1), (0, -1), (1, 0), (-1, 0)] # list of tuples for change in direction 
+        # to identify neighboring cells in all four cardinal directions (instructed not to count diagonal cells)
+        neighbors = [] # make container for neighboring cells
+        for dx, dy in directions: # dx = change in x direction, dy = change in y diretion (within each tuple)
+            nx, ny = x + dx, y + dy # neighboring cell's coordinates is set to be the current one plus the change in directions for x and y value
+            if (nx, ny) in self.cells: # if the neighboring cells is within the frame (not outside the 150x150 dimensions)
+                neighbors.append(self.cells[(nx, ny)]) # append the cells coordinate tuple to the neighbor cells list
+        return neighbors # return the neighboring cells list
+
+    def time_step(self): 
+        for cell in list(self.cells.values()): # for the cells in the cells dictionary
+            if cell.state == "I": # if the cell is infected
+                neighbors = self.adjacent_cells(cell.x, cell.y) # look at its adjacent cells (call them neighbors)
+                cell.process(neighbors) # run the 'process' function on the neighboring cells
+        self.display() # shows the updated image display
+
+def read_map(filename): # read map function
+    m = Map() #create empty map named 'm'
+    with open(filename, 'r') as file: # open the file to read it
+        for line in file: #for every line in the csv file
+            x, y = map(int, line.strip().split(",")) # the x and y coordinate values separated by comma, so slice by comma
+            cell = Cell(x, y) 
+            m.add_cell(cell) # add the cell to the map 
+    file.close() # close file to prevent accidental alterations / overwriting
+    return m # return the map
+
+# One example of usage
+m = read_map('nyc_map.csv') # read the nyc_map csv file to create the initial green and black image
+m.display() # display the image
+m.cells[(100, 75)].infect() # can choose which cell to initially infect
+for _ in range(20):  # can choose how many time steps to run for
+    m.time_step() # iterates simulation for that number of time steps; 
+    # checks infected cells for updates on status (recovered, dead, or still infected); then displays new map/image 
+
